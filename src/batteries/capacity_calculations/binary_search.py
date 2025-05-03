@@ -41,7 +41,7 @@ def _sim_battery_247(df_ren, df_dc_pow, b):
 
 
 # binary search for smallest battery size that meets all demand
-def _calculate_247_battery_capacity_b2_sim(df_ren, df_dc_pow, max_bsize):
+def _calculate_247_battery_capacity_b2_bin(df_ren, df_dc_pow, max_bsize):
 
     # first check special case, no battery:
     if _sim_battery_247(df_ren, df_dc_pow, Battery2(0, 0)):
@@ -63,7 +63,7 @@ def _calculate_247_battery_capacity_b2_sim(df_ren, df_dc_pow, max_bsize):
 
 
 # binary search for smallest battery size that meets all demand
-def _calculate_247_battery_capacity_b1_sim(df_ren, df_dc_pow, max_bsize):
+def _calculate_247_battery_capacity_b1_bin(df_ren, df_dc_pow, max_bsize):
 
     # first check special case, no battery:
     if _sim_battery_247(df_ren, df_dc_pow, Battery(0, 0)):

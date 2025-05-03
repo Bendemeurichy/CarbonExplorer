@@ -2,9 +2,13 @@
 # This source code is licensed under the CC-BY-NC license found in the
 # LICENSE file in the root directory of this source tree.
 
+from batteries.capacity_calculations.hybrid_search import (
+    _calculate_247_battery_capacity_b1_hybrid,
+    _calculate_247_battery_capacity_b2_hybrid,
+)
 from .capacity_calculations.binary_search import (
-    _calculate_247_battery_capacity_b1_sim,
-    _calculate_247_battery_capacity_b2_sim,
+    _calculate_247_battery_capacity_b1_bin,
+    _calculate_247_battery_capacity_b2_bin,
 )
 from .capacity_calculations.sequential_search import (
     _calculate_247_battery_capacity_b1_seq,
@@ -17,7 +21,7 @@ from .battery import Battery2
 # returns how much battery capacity is needed to make
 # dc operate on renewables 24/7
 def calculate_247_battery_capacity(
-    df_ren, df_dc_pow, search="sequential", battery_type="b1", max_bsize=500000
+    df_ren, df_dc_pow, search="sequential", battery_type="b1", max_bsize=1000
 ):
     battery_cap = 0  # return value stored here, capacity needed
 
@@ -29,15 +33,22 @@ def calculate_247_battery_capacity(
                 battery_cap = _calculate_247_battery_capacity_b2_seq(df_ren, df_dc_pow)
         case "binary":
             if battery_type == "b1":
-                battery_cap = _calculate_247_battery_capacity_b1_sim(
+                battery_cap = _calculate_247_battery_capacity_b1_bin(
                     df_ren, df_dc_pow, max_bsize
                 )
             else:
-                battery_cap = _calculate_247_battery_capacity_b2_sim(
+                battery_cap = _calculate_247_battery_capacity_b2_bin(
                     df_ren, df_dc_pow, max_bsize
                 )
         case "hybrid":
-            # TODO: implement hybrid search
+            if battery_type == "b1":
+                battery_cap = _calculate_247_battery_capacity_b1_hybrid(
+                    df_ren, df_dc_pow, max_bsize
+                )
+            else:
+                battery_cap = _calculate_247_battery_capacity_b2_hybrid(
+                    df_ren, df_dc_pow, max_bsize
+                )
             pass
         case _:
             raise ValueError(
