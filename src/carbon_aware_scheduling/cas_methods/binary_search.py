@@ -3,6 +3,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import pandas as pd
+import numpy as np
 
 
 def cas_binary(
@@ -22,197 +23,109 @@ def cas_binary(
     Returns:
         pd.DataFrame: Carbon balanced version of the input dataframe.
     """
-    # Implement binary search logic here
-    # This is a placeholder implementation
-    balanced_df = []
+    balanced_days = []
+    ratio = flexible_workload_ratio / 100.0
 
-    for i in range(0, df_all.shape[0], 24):
-        daily_df = df_all[i : i + 24].copy()
-        if daily_df.shape[0] < 24:
+    for i in range(0, len(df_all), 24):
+        day = df_all.iloc[i : i + 24]
+        if len(day) < 24:
             break
 
-        # Calculate total renewable deficit for the day
-        renewable_deficit = []
-        for j in range(daily_df.shape[0]):
-            deficit = max(
-                0,
-                daily_df["avg_dc_power_mw"].iloc[j] - daily_df["tot_renewable"].iloc[j],
-            )
-            renewable_deficit.append((j, deficit))
+        power = day["avg_dc_power_mw"].to_numpy()
+        ren = day["tot_renewable"].to_numpy()
+        # total workload we want to move
+        total_movable = power.sum() * ratio
 
-        # Sort hours by renewable deficit (descending)
-        renewable_deficit.sort(key=lambda x: x[1], reverse=True)
+        # deficits (donors) and surpluses (recipients)
+        deficits = np.maximum(0, power - ren)
+        surpluses = np.maximum(0, ren - power)  # available renewable headroom
 
-        # Calculate total movable workload
-        total_movable = sum(daily_df["avg_dc_power_mw"]) * flexible_workload_ratio / 100
-        workload_moved = 0
+        # sort donor hours by largest deficit
+        donor_idx = np.argsort(-deficits)
+        cum_def = np.cumsum(deficits[donor_idx])
+        # find minimal number of donors to cover total_movable
+        k = np.searchsorted(cum_def, total_movable, side="right") + 1
+        selected_donors = donor_idx[:k]
 
-        # Binary search for optimal threshold
-        left = 0
-        right = max([deficit for _, deficit in renewable_deficit])
+        # sort recipient hours by largest surplus and capacity
+        # note: capacity also limited by max_capacity - current_power
+        cap_space = np.minimum(surpluses, max_capacity - power)
+        recip_idx = np.argsort(-cap_space)
 
-        while left <= right:
-            mid = (left + right) / 2
-
-            # Try applying this threshold
-            test_df = daily_df.copy()
-            deficit_hours = [idx for idx, deficit in renewable_deficit if deficit > mid]
-            surplus_hours = [
-                j for j in range(daily_df.shape[0]) if j not in deficit_hours
-            ]
-
-            # Sort surplus hours by maximum available renewable capacity
-            surplus_hours.sort(
-                key=lambda j: test_df["tot_renewable"].iloc[j]
-                - test_df["avg_dc_power_mw"].iloc[j],
-                reverse=True,
-            )
-
-            moved = 0
-            for from_idx in deficit_hours:
+        # now move work
+        moved = 0.0
+        new_power = power.copy()
+        for d in selected_donors:
+            can_move = min(deficits[d], total_movable - moved)
+            if can_move <= 0:
+                break
+            # pour into recipients
+            for r in recip_idx:
+                space = cap_space[r]
+                if space <= 0:
+                    continue
+                amt = min(can_move, space)
+                new_power[d] -= amt
+                new_power[r] += amt
+                moved += amt
+                cap_space[r] -= amt
                 if moved >= total_movable:
                     break
+            if moved >= total_movable:
+                break
 
-                # Calculate how much can be moved from this hour
-                movable = min(
-                    test_df["avg_dc_power_mw"].iloc[from_idx]
-                    * flexible_workload_ratio
-                    / 100,
-                    total_movable - moved,
-                )
+        day_balanced = day.copy()
+        day_balanced["avg_dc_power_mw"] = new_power
+        balanced_days.append(day_balanced)
 
-                for to_idx in surplus_hours:
-                    available_space = min(
-                        test_df["tot_renewable"].iloc[to_idx]
-                        - test_df["avg_dc_power_mw"].iloc[to_idx],
-                        max_capacity - test_df["avg_dc_power_mw"].iloc[to_idx],
-                    )
-
-                    if available_space <= 0:
-                        continue
-
-                    amount_to_move = min(movable, available_space)
-                    if amount_to_move <= 0:
-                        continue
-
-                    test_df["avg_dc_power_mw"].iloc[from_idx] -= amount_to_move
-                    test_df["avg_dc_power_mw"].iloc[to_idx] += amount_to_move
-                    movable -= amount_to_move
-                    moved += amount_to_move
-
-                    if movable <= 0:
-                        break
-
-            if moved >= total_movable * 0.95:  # Allow 5% tolerance
-                # This threshold works, try a higher one (more selective)
-                left = mid + 0.1
-            else:
-                # This threshold is too high, try a lower one
-                right = mid - 0.1
-
-        balanced_df.append(test_df)
-
-    final_balanced_df = pd.concat(balanced_df).sort_values(by=["index"])
-    return final_balanced_df
+    return pd.concat(balanced_days).sort_index()
 
 
 def binary_cas_grid_mix(df_all, flexible_workload_ratio, max_capacity):
     """Binary search approach for carbon intensity optimization"""
-    balanced_df = []
+    ratio = flexible_workload_ratio / 100.0
+    balanced = []
 
-    for i in range(0, df_all.shape[0], 24):
-        daily_df = df_all[i : i + 24].copy()
-        if daily_df.shape[0] < 24:
+    for i in range(0, len(df_all), 24):
+        day = df_all.iloc[i : i + 24]
+        if len(day) < 24:
             break
 
-        # Sort hours by carbon intensity
-        hourly_carbon = [
-            (j, daily_df["carbon_intensity"].iloc[j]) for j in range(daily_df.shape[0])
-        ]
-        hourly_carbon.sort(key=lambda x: x[1], reverse=True)  # Highest carbon first
+        power = day["avg_dc_power_mw"].to_numpy()
+        ci = day["carbon_intensity"].to_numpy()
 
-        # Calculate total movable workload
-        total_movable = sum(daily_df["avg_dc_power_mw"]) * flexible_workload_ratio / 100
+        # how much each hour _could_ move out
+        movable = power * ratio
 
-        # Binary search for optimal carbon reduction
-        left = 0
-        right = max([intensity for _, intensity in hourly_carbon]) - min(
-            [intensity for _, intensity in hourly_carbon]
-        )
+        # donor hours: highest carbon first
+        donors = np.argsort(-ci)
+        # recipient hours: lowest carbon first
+        recips = np.argsort(ci)
 
-        best_df = daily_df.copy()
-        best_carbon_reduction = 0
+        new_power = power.copy()
 
-        while right - left > 0.1:
-            mid = (left + right) / 2
-
-            test_df = daily_df.copy()
-            carbon_threshold = min([intensity for _, intensity in hourly_carbon]) + mid
-
-            from_hours = [
-                idx for idx, intensity in hourly_carbon if intensity > carbon_threshold
-            ]
-            to_hours = [
-                idx for idx, intensity in hourly_carbon if intensity <= carbon_threshold
-            ]
-
-            # Sort destination hours by carbon intensity (ascending)
-            to_hours.sort(key=lambda j: test_df["carbon_intensity"].iloc[j])
-
-            moved = 0
-            carbon_reduced = 0
-
-            for from_idx in from_hours:
-                if moved >= total_movable:
+        # greedy move from donors→recips
+        for d in donors:
+            to_move = movable[d]
+            if to_move <= 0:
+                continue
+            for r in recips:
+                headroom = max_capacity - new_power[r]
+                if headroom <= 0:
+                    continue
+                amt = min(to_move, headroom)
+                new_power[d] -= amt
+                new_power[r] += amt
+                to_move -= amt
+                if to_move <= 0:
                     break
+            # if we moved everything possible, stop early
+            if new_power[d] <= power[d] * (1 - ratio):
+                continue
 
-                movable = min(
-                    test_df["avg_dc_power_mw"].iloc[from_idx]
-                    * flexible_workload_ratio
-                    / 100,
-                    total_movable - moved,
-                )
+        # write back
+        day_balanced = day.copy()
+        day_balanced["avg_dc_power_mw"] = new_power
+        balanced.append(day_balanced)
 
-                for to_idx in to_hours:
-                    available_space = (
-                        max_capacity - test_df["avg_dc_power_mw"].iloc[to_idx]
-                    )
-
-                    if available_space <= 0:
-                        continue
-
-                    amount_to_move = min(movable, available_space)
-                    if amount_to_move <= 0:
-                        continue
-
-                    carbon_delta = amount_to_move * (
-                        test_df["carbon_intensity"].iloc[from_idx]
-                        - test_df["carbon_intensity"].iloc[to_idx]
-                    )
-
-                    # Move workload
-                    test_df["avg_dc_power_mw"].iloc[from_idx] -= amount_to_move
-                    test_df["avg_dc_power_mw"].iloc[to_idx] += amount_to_move
-                    movable -= amount_to_move
-                    moved += amount_to_move
-                    carbon_reduced += carbon_delta
-
-                    if movable <= 0:
-                        break
-
-            if carbon_reduced > best_carbon_reduction:
-                best_df = test_df.copy()
-                best_carbon_reduction = carbon_reduced
-
-            # Adjust search space
-            if moved >= total_movable * 0.95:  # 5% tolerance
-                # We can move more workload, try a more aggressive threshold
-                left = mid
-            else:
-                # Too aggressive, reduce threshold
-                right = mid
-
-        balanced_df.append(best_df)
-
-    final_balanced_df = pd.concat(balanced_df).sort_values(by=["index"])
-    return final_balanced_df
+    return pd.concat(balanced).sort_index()
