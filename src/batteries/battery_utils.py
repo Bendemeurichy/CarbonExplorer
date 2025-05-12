@@ -2,7 +2,7 @@
 # This source code is licensed under the CC-BY-NC license found in the
 # LICENSE file in the root directory of this source tree.
 
-from batteries.battery_methods.hybrid_search import (
+from .battery_methods.hybrid_search import (
     _calculate_247_battery_capacity_b1_hybrid,
     _calculate_247_battery_capacity_b2_hybrid,
 )

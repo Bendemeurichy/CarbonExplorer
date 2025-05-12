@@ -3,9 +3,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import pandas as pd
-from cas_methods.sequential_search import cas_seq, seq_cas_grid_mix
-from cas_methods.binary_search import cas_binary, binary_cas_grid_mix
-from cas_methods.hybrid_search import cas_hybrid, hybrid_cas_grid_mix
+from .cas_methods.sequential_search import cas_seq, seq_cas_grid_mix
+from .cas_methods.binary_search import cas_binary, binary_cas_grid_mix
+from .cas_methods.hybrid_search import cas_hybrid, hybrid_cas_grid_mix
 
 
 def cas(
