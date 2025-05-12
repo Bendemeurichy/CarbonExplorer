@@ -2,15 +2,15 @@
 # This source code is licensed under the CC-BY-NC license found in the
 # LICENSE file in the root directory of this source tree.
 
-from batteries.capacity_calculations.hybrid_search import (
+from batteries.battery_methods.hybrid_search import (
     _calculate_247_battery_capacity_b1_hybrid,
     _calculate_247_battery_capacity_b2_hybrid,
 )
-from .capacity_calculations.binary_search import (
+from .battery_methods.binary_search import (
     _calculate_247_battery_capacity_b1_bin,
     _calculate_247_battery_capacity_b2_bin,
 )
-from .capacity_calculations.sequential_search import (
+from .battery_methods.sequential_search import (
     _calculate_247_battery_capacity_b1_seq,
     _calculate_247_battery_capacity_b2_seq,
 )
